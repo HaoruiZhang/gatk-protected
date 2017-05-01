@@ -22,7 +22,7 @@ Requirements
 * (Developers) Gradle 2.13 is needed for building the GATK. We recommend using the `./gradlew` script which will
 download and use an appropriate gradle version automatically.
 
-* (Developers) git lfs 1.1.0 (or greater) is needed for testing GATK-Protected builds.  It is needed to download large files for the complete test suite. Run ``git lfs install`` after downloading, followed by ``git lfs pull`` to download the large files. The download is ~500 MB.
+* (Developers) git lfs 1.1.0 (or greater) is needed for testing GATK-Protected builds. It is needed to download large files for the complete test suite. 
 
 #### R Required Packages
 R packages can be installed using the install_R_packages.R script inside the scripts directory.
@@ -113,6 +113,11 @@ R packages can be installed using the install_R_packages.R script inside the scr
 * **See the [GATK4 public README](https://github.com/broadinstitute/hellbender/blob/master/README.md) for full instructions on using `gatk-launch` to run tools on a Spark/Dataproc cluster.**
 
 ## Testing GATK4
+
+* Download large files for testing  
+    * Run ``git lfs install``. 
+    * cd src/test/resources/large (the directory for the large files).
+    * Run ``git lfs pull`` to download the large files. The download is ~500 MB.
 
 * To run the tests, run **`./gradlew test`**.
     * Test report is in `build/reports/tests/test/index.html`. 
