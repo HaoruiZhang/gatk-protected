@@ -102,7 +102,7 @@ public class DuplicateReadCountsUnitTest {
     @Test
     public void testMultipleDuplicateSets() throws IOException {
         // TODO: REFACTOR code
-        final int numAltReads = 10;
+        final int numAltReads = 12;
         final int numRefReads = 10;
         final int numReads = numAltReads + numRefReads;
 
@@ -112,7 +112,7 @@ public class DuplicateReadCountsUnitTest {
         Arrays.fill(quals, baseq);
 
         for (int i = 0; i < numAltReads; i++) {
-            final int startPosition = i % 2 == 0 ? alignmentStart : alignmentStart + 1;
+            final int startPosition = alignmentStart + (i % 3);
             final GATKRead read = ArtificialReadUtils.createArtificialRead(SAM_HEADER, "Read" + i, chromosomeIndex, startPosition,
                         "CCCCACCCC".getBytes(), quals, "9M");
             reads.add(read);
@@ -154,7 +154,7 @@ public class DuplicateReadCountsUnitTest {
         final int uniqueReadSetCount = GATKProtectedVariantContextUtils.getAttributeAsInt(genotype, DuplicateReadCounts.UNIQUE_ALT_READ_SET_COUNT_KEY, -1);
         final int[] duplicateReadCount = GATKProtectedVariantContextUtils.getAttributeAsIntArray(genotype, DuplicateReadCounts.DUPLICATE_READ_COUNT, () -> null, -1);
 
-        Assert.assertEquals(uniqueReadSetCount, 2);
-        ArrayAsserts.assertArrayEquals(duplicateReadCount, new int[]{ 5, 5 });
+        Assert.assertEquals(uniqueReadSetCount, 3);
+        ArrayAsserts.assertArrayEquals(duplicateReadCount, new int[]{ 4,4,4 });
     }
 }
