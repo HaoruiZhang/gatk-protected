@@ -22,6 +22,7 @@ public class Mutect2FilteringEngine {
     public final static String MEDIAN_FRAGMENT_LENGTH_DIFFERENCE_FILTER_NAME = "fragment_length";
     public final static String READ_POSITION_FILTER_NAME = "read_position";
     public final static String CONTAMINATION_FILTER_NAME = "contamination";
+    public final static String DUPLICATED_EVIDENCE_FILTER_NAME = "duplicate_evidence";
 
     public static final List<String> M_2_FILTER_NAMES = Arrays.asList(GATKVCFConstants.STR_CONTRACTION_FILTER_NAME, GATKVCFConstants.PON_FILTER_NAME,
             GATKVCFConstants.HOMOLOGOUS_MAPPING_EVENT_FILTER_NAME, GATKVCFConstants.CLUSTERED_EVENTS_FILTER_NAME,
@@ -190,9 +191,22 @@ public class Mutect2FilteringEngine {
         }
     }
 
+    private void applyDuplicateFilters(final VariantContext vc, final Collection<String> filters) {
+        Genotype tumorGenotype = vc.getGenotype(tumorSample);
+        final int uniqueReadSetCount = GATKProtectedVariantContextUtils.getAttributeAsInt(tumorGenotype, DuplicateReadCounts.UNIQUE_ALT_READ_SET_COUNT_KEY, -1);
+        final int[] duplicateReadCount = GATKProtectedVariantContextUtils.getAttributeAsIntArray(tumorGenotype, DuplicateReadCounts.DUPLICATE_READ_COUNT, () -> null, -1);
+
+        if (uniqueReadSetCount == 1){
+            filters.add(DUPLICATED_EVIDENCE_FILTER_NAME);
+        }
+
+        return;
+    }
+
     //TODO: building a list via repeated side effects is ugly
     public Set<String> calculateFilters(final M2FiltersArgumentCollection MTFAC, final VariantContext vc) {
         final Set<String> filters = new HashSet<>();
+        applyDuplicateFilters(vc, filters);
         applyEventDistanceFilters(vc, filters);
         applyTriallelicFilter(vc, filters);
         applyPanelOfNormalsFilter(MTFAC, vc, filters);
