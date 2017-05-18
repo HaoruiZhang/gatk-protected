@@ -5,7 +5,6 @@ import htsjdk.tribble.readers.LineIterator;
 import htsjdk.tribble.readers.PositionalBufferedStream;
 import htsjdk.variant.variantcontext.VariantContext;
 import htsjdk.variant.vcf.VCFCodec;
-import htsjdk.variant.vcf.VCFUtils;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.broadinstitute.hellbender.CommandLineProgramTest;
 import org.broadinstitute.hellbender.cmdline.StandardArgumentDefinitions;
@@ -209,5 +208,16 @@ public class GenotypeGVCFsIntegrationTest extends CommandLineProgramTest {
 
         runCommandLine(args);
         Assert.assertTrue(index.exists());
+    }
+
+    @Test
+    public void testMissingAlleleSpecificAnnotationGroup() throws IOException {
+        final File output = createTempFile("test", ".g.vcf");
+        final ArgumentsBuilder args = new ArgumentsBuilder()
+                .addVCF(getTestFile("alleleSpecific.g.vcf"))
+                .addOutput(output)
+                .addReference(new File(b37_reference_20_21));
+
+        runCommandLine(args);
     }
 }
