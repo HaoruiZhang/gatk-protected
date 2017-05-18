@@ -1,0 +1,19 @@
+{
+  "gCNVCohortCallingWorkflow.sex_genotypes": "File",
+  "gCNVCohortCallingWorkflow.contig_annotations": "File",
+  "gCNVCohortCallingWorkflow.transition_prior_table": "File",
+  "gCNVCohortCallingWorkflow.transition_matrix_XY_Y": "(optional) File?",
+  "gCNVCohortCallingWorkflow.transition_matrix_XX_X": "(optional) File?",
+  "gCNVCohortCallingWorkflow.transition_matrix_XY_X": "(optional) File?",
+  "gCNVCohortCallingWorkflow.transition_matrix_XX_Y": "(optional) File?",
+  "gCNVCohortCallingWorkflow.transition_matrix_autosomal": "(optional) File?",
+  "gCNVCohortCallingWorkflow.output_path": "String",
+  "gCNVCohortCallingWorkflow.num_latents": "Int",
+  "gCNVCohortCallingWorkflow.model_path": "String",
+  "gCNVCohortCallingWorkflow.normal_bams_list": "File",
+  "gCNVCohortCallingWorkflow.ref_fasta": "File",
+  "gCNVCohortCallingWorkflow.ref_fasta_dict": "File",
+  "gCNVCohortCallingWorkflow.ref_fasta_fai": "File",
+  "gCNVCohortCallingWorkflow.gatk_jar": "String",
+  "gCNVCohortCallingWorkflow.targets": "(optional) File?"
+}
