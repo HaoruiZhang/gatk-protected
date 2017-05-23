@@ -49,13 +49,13 @@ public class DuplicateReadCounts extends GenotypeAnnotation implements StandardS
         Collection<ReadLikelihoods<Allele>.BestAllele> tumorBestAlleles = likelihoods.bestAlleles(tumorSampleName);
         Map<ImmutablePair<Integer, Integer>, Long> duplicateReadMap = tumorBestAlleles.stream()
                 .filter(ba -> ba.allele.equals(altAllele) && ba.isInformative())
-                .map(ba -> new ImmutablePair<Integer, Integer>(ba.read.getStart(), ba.read.getEnd())) // build fails without the <Integer, Integer>...why?
+                .map(ba -> new ImmutablePair<>(ba.read.getStart(), ba.read.getFragmentLength()))
                 .collect(Collectors.groupingBy(x -> x, Collectors.counting()));
 
         final List<Long> duplicateCounts = new ArrayList<>(duplicateReadMap.values());
         Collections.reverse(duplicateCounts); // sort duplicateCounts in descending order
         final int topN = 3;
-        final List<Long> topNDuplicateCounts = duplicateCounts.size() <= 3 ? duplicateCounts
+        final List<Long> topNDuplicateCounts = duplicateCounts.size() <= topN ? duplicateCounts
                 : duplicateCounts.subList(0, topN);
 
         gb.attribute(UNIQUE_ALT_READ_SET_COUNT_KEY, duplicateReadMap.size());
