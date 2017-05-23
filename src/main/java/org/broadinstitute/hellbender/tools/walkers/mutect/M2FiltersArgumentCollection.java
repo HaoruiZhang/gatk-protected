@@ -54,4 +54,7 @@ public class M2FiltersArgumentCollection extends AssemblyBasedCallerArgumentColl
     @Argument(shortName = "contaminationTable", fullName = "contaminationTable", optional = true, doc="Table containing contamination information.")
     public File contaminationTable = null;
 
+    @Argument(shortName = "urs", fullName = "uniqueReadSetThreshold", optional = true, doc="")
+    public int uniqueReadSetThreshold = 1;
+
 }
