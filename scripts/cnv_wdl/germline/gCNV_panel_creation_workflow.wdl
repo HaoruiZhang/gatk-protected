@@ -1,13 +1,14 @@
 # Workflow for creating a panel of normals for germline CNV pipeline
-# Notes: 
+# Notes:
 #
-# -Basic sex genotype tab separated table for homo sapiens must be formatted as follows (See SexGenotypeTableReader.java class for full description):
+# -Basic sex genotype tab-separated table for homo sapiens must be formatted as follows (Refer to the Javadoc of SexGenotypeTableReader for full description):
 #    SAMPLE_NAME  SEX_GENOTYPE
 #    sample_name_1 SEX_XX
 #    sample_name_2 SEX_XY
 #    sample_name_3  SEX_XY
 #    sample_name_4  SEX_XX
-# where sex genotype identifiers must match those in tab-separated contig ploidy annotation table that should be formatted as follows:
+# Sex genotype identifiers (SEX_XX and SEX_XY in the above example) must match those in the tab-separated germline contig ploidy annotation table. 
+# The latter is formatted as follows:
 #    CONTIG  CLASS  SEX_XX  SEX_XY
 #    1         AUTOSOMAL       2          2
 #    2         AUTOSOMAL       2          2
@@ -19,7 +20,7 @@
 #    normal_bam_1 bam_idx_1
 #    normal_bam_2 bam_idx_2
 #
-# - The target file (targets) is required for the WES workflow and should be a TSV file with the column headers:
+# - The target file (targets) is required for the WES workflow and should be a tab-separated file with the column headers:
 #    contig    start    stop    name
 #   These targets will be padded on both sides by the amount specified by PadTargets.padding (default 250).
 #
@@ -28,7 +29,7 @@
 #
 # - Example invocation:
 #    java -jar cromwell.jar run gCNV_panel_creation_workflow.wdl myParameters.json
-#   See gCNV_panel_creation_workflow.json for a template json file to modify with your own parameters (please save
+#   We recommend taking gCNV_cohort_calling_workflow.json as a template json file and modifying it accordingly (please save
 #   your modified version with a different filename and do not commit to the gatk-protected repository).
 ##################
 
@@ -40,13 +41,9 @@ workflow CNVGermlinePanelWorkflow {
   File normal_bams_list
   Array[Array[String]]+ normal_bams = read_tsv(normal_bams_list)
   File sex_genotypes 
-  File contig_annotations
+  File contig_ploidy_annotations
   File transition_prior_table
-  File? transition_matrix_XX_Y
-  File? transition_matrix_XY_X
-  File? transition_matrix_XY_Y
-  File? transition_matrix_XX_X
-  File? transition_matrix_autosomal
+  Array[File] copy_number_transition_prior_files
   File ref_fasta
   File ref_fasta_dict
   File ref_fasta_fai
@@ -114,14 +111,10 @@ workflow CNVGermlinePanelWorkflow {
   call GermlineCNVCaller {
     input:
       coverage = CorrectGCBias.corrected_coverage,
-      contig_annotations = contig_annotations,
+      contig_ploidy_annotations = contig_ploidy_annotations,
       sex_genotypes = sex_genotypes,
       transition_prior_table = transition_prior_table,
-      transition_matrix_XX_Y = transition_matrix_XX_Y,
-      transition_matrix_XY_X = transition_matrix_XY_X,
-      transition_matrix_XY_Y = transition_matrix_XY_Y,
-      transition_matrix_XX_X = transition_matrix_XX_X,
-      transition_matrix_autosomal = transition_matrix_autosomal,
+      copy_number_transition_prior_files = copy_number_transition_prior_files,
       pon_output_path = pon_output_path,
       num_latents = num_latents, 
       gatk_jar = gatk_jar
@@ -154,17 +147,13 @@ task CombineReadCounts {
     }
 }
   
-# Create the panel of normals
+# Learn the coverage model
 task GermlineCNVCaller {
     File coverage
-    File contig_annotations
+    File contig_ploidy_annotations
     File sex_genotypes
     File transition_prior_table
-    File? transition_matrix_XX_Y
-    File? transition_matrix_XY_X
-    File? transition_matrix_XY_Y
-    File? transition_matrix_XX_X
-    File? transition_matrix_autosomal
+    Array[File] copy_number_transition_prior_files
     String pon_output_path
     Int num_latents
     File gatk_jar
@@ -173,7 +162,7 @@ task GermlineCNVCaller {
     command {
         java -Xmx${default=4 mem}g -Ddtype=double -jar ${gatk_jar} GermlineCNVCaller \
             --input ${coverage} \
-            --contigAnnotationsTable ${contig_annotations} \
+            --contigAnnotationsTable ${contig_ploidy_annotations} \
             --sexGenotypeTable ${sex_genotypes} \
             --copyNumberTransitionPriorTable ${transition_prior_table} \
             --outputPath ${pon_output_path} \

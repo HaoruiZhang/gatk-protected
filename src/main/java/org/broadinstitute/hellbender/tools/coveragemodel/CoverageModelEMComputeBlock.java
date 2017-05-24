@@ -9,7 +9,6 @@ import org.apache.commons.math3.exception.TooManyEvaluationsException;
 import org.apache.commons.math3.util.FastMath;
 import org.broadinstitute.hellbender.tools.coveragemodel.cachemanager.*;
 import org.broadinstitute.hellbender.tools.coveragemodel.math.RobustBrentSolver;
-import org.broadinstitute.hellbender.tools.coveragemodel.nd4jutils.Nd4jUtils;
 import org.broadinstitute.hellbender.utils.Utils;
 import org.broadinstitute.hellbender.utils.param.ParamUtils;
 import org.nd4j.linalg.api.ndarray.INDArray;
@@ -1312,7 +1311,7 @@ public final class CoverageModelEMComputeBlock {
                 final INDArray zz_ll = zz_sll.get(NDArrayIndex.point(si), NDArrayIndex.all(), NDArrayIndex.all());
                 /* mean_W_contrib_t = \sum_{m,n} E[W_{tm}] E[W_{tn}] E[z_{sm} z_{sn}] */
                 final INDArray mean_W_contrib_t = W_tl.mmul(zz_ll).muli(W_tl).sum(1).transpose();
-                Nd4jUtils.getNDArrayByIndices(WzzWT_st, NDArrayIndex.point(si), NDArrayIndex.all(), numSamples).assign(mean_W_contrib_t);
+                WzzWT_st.getRow(si).assign(mean_W_contrib_t);
             }
             return new DuplicableNDArray(WzzWT_st);
         }

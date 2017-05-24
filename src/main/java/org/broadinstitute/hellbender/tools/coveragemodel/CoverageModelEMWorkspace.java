@@ -30,7 +30,6 @@ import org.broadinstitute.hellbender.tools.coveragemodel.math.RobustBrentSolver;
 import org.broadinstitute.hellbender.tools.coveragemodel.math.SynchronizedUnivariateSolver;
 import org.broadinstitute.hellbender.tools.coveragemodel.math.UnivariateSolverSpecifications;
 import org.broadinstitute.hellbender.tools.coveragemodel.nd4jutils.Nd4jIOUtils;
-import org.broadinstitute.hellbender.tools.coveragemodel.nd4jutils.Nd4jUtils;
 import org.broadinstitute.hellbender.tools.exome.*;
 import org.broadinstitute.hellbender.tools.exome.sexgenotyper.GermlinePloidyAnnotatedTargetCollection;
 import org.broadinstitute.hellbender.tools.exome.sexgenotyper.SexGenotypeData;
@@ -1008,8 +1007,7 @@ public final class CoverageModelEMWorkspace<STATE extends AlleleMetadataProducer
             final INDArray G_ll = CoverageModelEMWorkspaceMathUtils.minv(shared_ll
                     .add(G_partial_sll.get(NDArrayIndex.point(si), NDArrayIndex.all(), NDArrayIndex.all())));
             /* E[z_s] = G_s W^T M_{st} \Psi_{st}^{-1} (m_{st} - m_t) */
-            Nd4jUtils.getNDArrayByIndices(new_z_sl, NDArrayIndex.point(si), NDArrayIndex.all(), numSamples)
-                    .assign(G_ll.mmul(Nd4jUtils.getNDArrayByIndices(z_rhs_ls, NDArrayIndex.all(), NDArrayIndex.point(si), numSamples)).transpose());
+            new_z_sl.getRow(si).assign(G_ll.mmul(z_rhs_ls.getColumn(si)).transpose());
             /* E[z_s z_s^T] = G_s + E[z_s] E[z_s^T] */
             final INDArray z = new_z_sl.get(NDArrayIndex.point(si), NDArrayIndex.all());
             new_zz_sll.get(NDArrayIndex.point(si), NDArrayIndex.all(), NDArrayIndex.all())
@@ -2459,7 +2457,7 @@ public final class CoverageModelEMWorkspace<STATE extends AlleleMetadataProducer
                     calls[ti] = copyRatio;
                 }
             });
-            Nd4jUtils.getNDArrayByIndices(res, NDArrayIndex.point(si), NDArrayIndex.all(), numSamples).assign(Nd4j.create(calls, new int[] {1, numTargets}));
+            res.getRow(si).assign(Nd4j.create(calls, new int[] {1, numTargets}));
         }
         return res.transpose();
     }
