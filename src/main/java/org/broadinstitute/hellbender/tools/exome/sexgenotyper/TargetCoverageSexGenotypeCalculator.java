@@ -200,9 +200,8 @@ public final class TargetCoverageSexGenotypeCalculator {
             /* calculate log likelihood */
             final int[] currentAllosomalTargetPloidies = allosomalTargetPloidies.get(genotypeName);
             final double[] poissonParameters = IntStream.range(0, numAllosomalTargets)
-                    .mapToDouble(i -> readDepth *
-                            (currentAllosomalTargetPloidies[i] > 0 ? currentAllosomalTargetPloidies[i]
-                                    : baselineMappingErrorProbability))
+                    .mapToDouble(i -> readDepth * ((1 - baselineMappingErrorProbability) * currentAllosomalTargetPloidies[i]
+                            + baselineMappingErrorProbability))
                     .toArray();
             final double currentLogLikelihood = IntStream.range(0, numAllosomalTargets)
                     .mapToDouble(i -> {

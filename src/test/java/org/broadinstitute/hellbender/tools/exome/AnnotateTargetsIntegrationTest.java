@@ -4,7 +4,6 @@ import htsjdk.samtools.SAMSequenceDictionary;
 import htsjdk.samtools.SAMSequenceRecord;
 import htsjdk.samtools.reference.ReferenceSequence;
 import htsjdk.tribble.Tribble;
-import htsjdk.tribble.bed.BEDCodec;
 import htsjdk.tribble.index.Index;
 import htsjdk.tribble.index.IndexFactory;
 import htsjdk.tribble.util.LittleEndianOutputStream;
@@ -12,7 +11,6 @@ import org.broadinstitute.hellbender.CommandLineProgramTest;
 import org.broadinstitute.hellbender.cmdline.StandardArgumentDefinitions;
 import org.broadinstitute.hellbender.engine.ReferenceFileSource;
 import org.broadinstitute.hellbender.exceptions.UserException;
-import org.broadinstitute.hellbender.utils.IndexRange;
 import org.broadinstitute.hellbender.utils.SimpleInterval;
 import org.broadinstitute.hellbender.utils.codecs.TargetCodec;
 import org.broadinstitute.hellbender.utils.test.BaseTest;
@@ -21,7 +19,9 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -47,10 +47,10 @@ public class AnnotateTargetsIntegrationTest extends CommandLineProgramTest {
     private static final File TARGET_FILE_IDX = Tribble.indexFile(TARGET_FILE);
 
     @BeforeClass
-    public void createTargetFile() throws IOException
-    {
+    public void createTargetFile() throws IOException  {
         final SAMSequenceDictionary referenceDictionary = resolveReferenceDictionary();
-        final List<SimpleInterval> targetIntervals = createRandomIntervals(referenceDictionary, NUMBER_OF_TARGETS, MIN_TARGET_SIZE, MAX_TARGET_SIZE, MEAN_TARGET_SIZE, TARGET_SIZE_STDEV);
+        final List<SimpleInterval> targetIntervals = createRandomIntervals(referenceDictionary, NUMBER_OF_TARGETS,
+                MIN_TARGET_SIZE, MAX_TARGET_SIZE, MEAN_TARGET_SIZE, TARGET_SIZE_STDEV);
         final List<Target> targets = targetIntervals.stream().map(Target::new).collect(Collectors.toList());
         TargetWriter.writeTargetsToFile(TARGET_FILE, targets);
         final Index index = IndexFactory.createIndex(TARGET_FILE, new TargetCodec(), IndexFactory.IndexType.LINEAR);
@@ -65,27 +65,28 @@ public class AnnotateTargetsIntegrationTest extends CommandLineProgramTest {
         TARGET_FILE_IDX.delete();
     }
 
-    private List<SimpleInterval> createRandomIntervals(final SAMSequenceDictionary referenceDictionary, final int numberOfIntervals, final int minIntervalSize, final int maxIntervalSize, final int meanIntervalSize, final double intervalSizeStdev) {
+    private List<SimpleInterval> createRandomIntervals(final SAMSequenceDictionary referenceDictionary,
+                                                       final int numberOfIntervals, final int minIntervalSize,
+                                                       final int maxIntervalSize, final int meanIntervalSize,
+                                                       final double intervalSizeStdev) {
         final List<SimpleInterval> result = new ArrayList<>(numberOfIntervals);
         final int numberOfSequences = referenceDictionary.getSequences().size();
         for (int i = 0; i < numberOfIntervals; i++) {
             final SAMSequenceRecord contig = referenceDictionary.getSequence(RANDOM.nextInt(numberOfSequences));
             final String contigName = contig.getSequenceName();
-            final int intervalSize = Math.min(maxIntervalSize, (int) Math.max(minIntervalSize, Math.round(RANDOM.nextDouble() * intervalSizeStdev + meanIntervalSize)));
+            final int intervalSize = Math.min(maxIntervalSize, (int) Math.max(minIntervalSize,
+                    Math.round(RANDOM.nextDouble() * intervalSizeStdev + meanIntervalSize)));
             final int intervalStart = 1 + RANDOM.nextInt(contig.getSequenceLength() - intervalSize);
             final int intervalEnd = intervalStart + intervalSize - 1;
             final SimpleInterval interval = new SimpleInterval(contigName, intervalStart, intervalEnd);
             result.add(interval);
         }
 
-        final Comparator<SimpleInterval> comparator =
-                Comparator.comparing(SimpleInterval::getContig,
-                        (a, b) -> Integer.compare(
-                                referenceDictionary.getSequenceIndex(a),
-                                referenceDictionary.getSequenceIndex(b)))
+        final Comparator<SimpleInterval> comparator = Comparator.comparing(SimpleInterval::getContig,
+                Comparator.comparingInt(referenceDictionary::getSequenceIndex))
                 .thenComparingInt(SimpleInterval::getStart)
                 .thenComparingInt(SimpleInterval::getEnd);
-        Collections.sort(result, comparator);
+        result.sort(comparator);
         return result;
     }
 
@@ -118,7 +119,8 @@ public class AnnotateTargetsIntegrationTest extends CommandLineProgramTest {
         checkOutputFileContent(outputFile, true, false);
     }
 
-    private void checkOutputFileContent(final File outputFile, final boolean mustHaveGCContent, final boolean mustHaveRepeats) throws IOException {
+    private void checkOutputFileContent(final File outputFile, final boolean mustHaveGCContent,
+                                        final boolean mustHaveRepeats) throws IOException {
         try (final TargetTableReader outputReader = new TargetTableReader(outputFile);
              final TargetTableReader inputReader = new TargetTableReader(TARGET_FILE);
              final ReferenceFileSource reference = new ReferenceFileSource(REFERENCE)) {

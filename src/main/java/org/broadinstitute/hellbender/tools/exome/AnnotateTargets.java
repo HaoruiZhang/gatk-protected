@@ -3,6 +3,7 @@ package org.broadinstitute.hellbender.tools.exome;
 import org.broadinstitute.barclay.argparser.Argument;
 import org.broadinstitute.barclay.argparser.CommandLineProgramProperties;
 import org.broadinstitute.barclay.help.DocumentedFeature;
+import org.broadinstitute.hellbender.cmdline.ExomeStandardArgumentDefinitions;
 import org.broadinstitute.hellbender.cmdline.StandardArgumentDefinitions;
 import org.broadinstitute.hellbender.cmdline.programgroups.CopyNumberProgramGroup;
 import org.broadinstitute.hellbender.engine.*;
@@ -69,12 +70,21 @@ import java.util.Map;
 public class AnnotateTargets extends TargetWalker {
 
     @Argument(
-            doc = "Output annotated target file.",
+            doc = "Output annotated target file",
             fullName = StandardArgumentDefinitions.OUTPUT_LONG_NAME,
             shortName = StandardArgumentDefinitions.OUTPUT_SHORT_NAME,
             optional  = false
     )
-    public File outputFile;
+    protected File outputFile;
+
+    @Argument(
+            doc = "Bait file. Should be formatted as a tab-separated table (.tsv) with the following header columns:" +
+                    " contig, start, stop, name.",
+            fullName = ExomeStandardArgumentDefinitions.BAITS_FILE_LONG_NAME,
+            shortName = ExomeStandardArgumentDefinitions.BAITS_FILE_SHORT_NAME,
+            optional = true
+    )
+    protected FeatureInput<Target> baits;
 
     private TargetWriter outputWriter;
 
@@ -84,13 +94,26 @@ public class AnnotateTargets extends TargetWalker {
     public void onTraversalStart() {
         super.onTraversalStart();
         annotators = new LinkedHashMap<>(2);
+
+        // GC content annotation
         if (hasReference()) {
             annotators.put(TargetAnnotation.GC_CONTENT, new GCContentAnnotator());
-            logger.info(String.format("Adding the %s annotation to the output; a reference has been provided", TargetAnnotation.GC_CONTENT));
+            logger.info(String.format("Adding the %s annotation to the output; a reference has been provided",
+                    TargetAnnotation.GC_CONTENT));
         } else {
-            logger.info(String.format("Omitting the %s annotation to the output; no reference was provided", TargetAnnotation.GC_CONTENT));
+            logger.info(String.format("Omitting the %s annotation to the output; no reference was provided",
+                    TargetAnnotation.GC_CONTENT));
         }
 
+        // Bait count annotation
+        if (baits != null) {
+            annotators.put(TargetAnnotation.BAIT_COUNT, new BaitCountAnnotator());
+            logger.info(String.format("Adding the %s annotation to the output; a bait table has been provided",
+                    TargetAnnotation.BAIT_COUNT));
+        } else {
+            logger.info(String.format("Omitting the %s annotation to the output; no bait table was provided",
+                    TargetAnnotation.BAIT_COUNT));
+        }
 
         if (annotators.isEmpty()) {
             throw new UserException.BadInput("Resources needed to perform annotation are missing.");
@@ -113,7 +136,8 @@ public class AnnotateTargets extends TargetWalker {
     }
 
     @Override
-    public void apply(final Target target, final ReadsContext readsContext, final ReferenceContext referenceContext, final FeatureContext featureContext) {
+    public void apply(final Target target, final ReadsContext readsContext, final ReferenceContext referenceContext,
+                      final FeatureContext featureContext) {
         final TargetAnnotationCollection outputAnnotations = new TargetAnnotationCollection();
         // Add the input annotations:
         final TargetAnnotationCollection inputAnnotations = target.getAnnotations();
@@ -135,18 +159,36 @@ public class AnnotateTargets extends TargetWalker {
     }
 
     private interface TargetAnnotator {
-        Object apply(final Target target, final ReadsContext readsContext, final ReferenceContext referenceContext, final FeatureContext featureContext);
+        Object apply(final Target target, final ReadsContext readsContext, final ReferenceContext referenceContext,
+                     final FeatureContext featureContext);
     }
 
     private class GCContentAnnotator implements TargetAnnotator {
         @Override
-        public Double apply(final Target target, final ReadsContext readsContext, final ReferenceContext referenceContext, final FeatureContext featureContext) {
+        public Double apply(final Target target, final ReadsContext readsContext, final ReferenceContext referenceContext,
+                            final FeatureContext featureContext) {
             final Nucleotide.Counter counter = new Nucleotide.Counter();
             counter.addAll(referenceContext.getBases());
             final long gcCount = counter.get(Nucleotide.C) + counter.get(Nucleotide.G);
             final long atCount = counter.get(Nucleotide.A) + counter.get(Nucleotide.T);
             final long totalCount = gcCount + atCount;
             return totalCount == 0 ? Double.NaN : gcCount / (double) totalCount;
+        }
+    }
+
+    private class BaitCountAnnotator implements TargetAnnotator {
+        @Override
+        public Double apply(final Target target, final ReadsContext readsContext, final ReferenceContext referenceContext,
+                            final FeatureContext featureContext) {
+            return featureContext.getValues(baits).stream()
+                    .mapToDouble(bait -> getOverlapFraction(target, bait))
+                    .sum();
+        }
+
+        private double getOverlapFraction(final Target target, final Target bait) {
+            final int intersectionSize = target.getInterval().intersect(bait).size();
+            final int baitSize = bait.getInterval().size();
+            return (double)intersectionSize / baitSize;
         }
     }
 }

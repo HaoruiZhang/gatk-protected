@@ -146,7 +146,6 @@ public class TargetCoverageSexGenotyper extends CommandLineProgram {
         logger.info("Parsing contig genotype ploidy annotations file...");
         contigGermlinePloidyAnnotationList = ContigGermlinePloidyAnnotationTableReader.readContigGermlinePloidyAnnotationsFromFile(inputContigAnnotsFile);
 
-
         /* parse target list */
         final List<Target> inputTargetList;
         if (inputTargetListFile != null) {
