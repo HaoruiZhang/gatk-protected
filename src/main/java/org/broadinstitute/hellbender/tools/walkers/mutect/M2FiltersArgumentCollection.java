@@ -54,7 +54,7 @@ public class M2FiltersArgumentCollection extends AssemblyBasedCallerArgumentColl
     @Argument(shortName = "contaminationTable", fullName = "contaminationTable", optional = true, doc="Table containing contamination information.")
     public File contaminationTable = null;
 
-    @Argument(shortName = "urs", fullName = "uniqueReadSetThreshold", optional = true, doc="")
-    public int uniqueReadSetThreshold = 1;
+    @Argument(shortName = "unique", fullName = "uniqueAltReadCount", optional = true, doc="Filter a variant if a site contains fewer than this many unique (i.e. deduplicated) reads supporting the alternate allele")
+    public int uniqueAltReadCount = 0;
 
 }
