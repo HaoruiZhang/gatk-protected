@@ -9,11 +9,14 @@ import org.broadinstitute.hellbender.cmdline.programgroups.CopyNumberProgramGrou
 import org.broadinstitute.hellbender.engine.*;
 import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.utils.Nucleotide;
+import org.broadinstitute.hellbender.utils.SimpleInterval;
+import org.broadinstitute.hellbender.utils.Utils;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * Tool to annotate targets.
@@ -60,6 +63,7 @@ import java.util.Map;
  * </pre>
  *
  * @author Valentin Ruano-Rubio &lt;valentin@broadinstitute.org&gt;
+ * @author Mehrtash Babadi &lt;mehrtash@broadinstitute.org&gt;
  */
 @CommandLineProgramProperties(
         oneLineSummary = "Annotate targets with various properties, such as GC content",
@@ -86,16 +90,20 @@ public class AnnotateTargets extends TargetWalker {
     )
     protected FeatureInput<Target> baits;
 
-    private TargetWriter outputWriter;
+    private EnumMap<TargetAnnotation, TargetAnnotator> annotators;
 
-    private Map<TargetAnnotation, TargetAnnotator> annotators;
+    private List<Target> immediatelyAnnotatedTargetList;
+    private List<EnumMap<TargetAnnotation, Object>> lazyAnnotationsRawData;
+    private boolean hasLazyAnnotators;
+
+    private TargetWriter outputWriter;
 
     @Override
     public void onTraversalStart() {
         super.onTraversalStart();
-        annotators = new LinkedHashMap<>(2);
+        annotators = new EnumMap<>(TargetAnnotation.class);
 
-        // GC content annotation
+        /* GC content annotation */
         if (hasReference()) {
             annotators.put(TargetAnnotation.GC_CONTENT, new GCContentAnnotator());
             logger.info(String.format("Adding the %s annotation to the output; a reference has been provided",
@@ -105,7 +113,7 @@ public class AnnotateTargets extends TargetWalker {
                     TargetAnnotation.GC_CONTENT));
         }
 
-        // Bait count annotation
+        /* Bait count annotation */
         if (baits != null) {
             annotators.put(TargetAnnotation.BAIT_COUNT, new BaitCountAnnotator());
             logger.info(String.format("Adding the %s annotation to the output; a bait table has been provided",
@@ -118,15 +126,59 @@ public class AnnotateTargets extends TargetWalker {
         if (annotators.isEmpty()) {
             throw new UserException.BadInput("Resources needed to perform annotation are missing.");
         }
+
+        if (annotators.values().stream().anyMatch(TargetAnnotator::isLazy)) {
+            lazyAnnotationsRawData = new ArrayList<>();
+            hasLazyAnnotators = true;
+        } else {
+            hasLazyAnnotators = false;
+        }
+
         try {
             outputWriter = new TargetWriter(outputFile, annotators.keySet());
         } catch (final IOException e) {
             throw new UserException.CouldNotCreateOutputFile(outputFile, e);
         }
+
+        /* A container of traversed targets along with their immediate (non-lazy) annotations */
+        immediatelyAnnotatedTargetList = new ArrayList<>();
+    }
+
+    @Override
+    public void apply(final Target target, final ReadsContext readsContext, final ReferenceContext referenceContext,
+                      final FeatureContext featureContext) {
+        // Calculate and add the requested annotations
+        final TargetAnnotationCollection newAnnotations = new TargetAnnotationCollection();
+        final EnumMap<TargetAnnotation, Object> lazyAnnotations = new EnumMap<>(TargetAnnotation.class);
+        for (final Map.Entry<TargetAnnotation, TargetAnnotator> annotatorsEntry : annotators.entrySet()) {
+            final TargetAnnotation annotation = annotatorsEntry.getKey();
+            final TargetAnnotator annotator = annotatorsEntry.getValue();
+            final Object newAnnotation = annotator.apply(target, readsContext, referenceContext, featureContext);
+            if (!annotator.isLazy()) {
+                newAnnotations.put(annotation, String.valueOf(newAnnotation));
+            } else {
+                lazyAnnotations.put(annotation, newAnnotation);
+            }
+        }
+        /* Compose the new target with non-lazy annotations and add to the list */
+        final Target newTarget = new Target(target.getName(), target.getInterval(),
+                mergeAnnotations(target.getAnnotations(), newAnnotations));
+        immediatelyAnnotatedTargetList.add(newTarget);
+        if (hasLazyAnnotators) {
+            lazyAnnotationsRawData.add(lazyAnnotations);
+        }
     }
 
     @Override
     public Object onTraversalSuccess() {
+        /* write new targets */
+        logger.info("Writing annotated targets to file...");
+        try {
+            outputWriter.writeAllRecords(generateFullyAnnotatedTargets());
+        } catch (final IOException e) {
+            throw new UserException.CouldNotCreateOutputFile(outputFile, "problem writing targets to the output file");
+        }
+
         try {
             outputWriter.close();
         } catch (final IOException ex) {
@@ -135,32 +187,77 @@ public class AnnotateTargets extends TargetWalker {
         return super.onTraversalSuccess();
     }
 
-    @Override
-    public void apply(final Target target, final ReadsContext readsContext, final ReferenceContext referenceContext,
-                      final FeatureContext featureContext) {
+    /**
+     * Merges two {@link TargetAnnotationCollection}s. If both collection intersect on a same set of annotations,
+     * the second instance({@code other}) _overrides_ the first instance (@code{original}).
+     *
+     * @param original first collection
+     * @param other second collection
+     * @return merged collection
+     */
+    private static TargetAnnotationCollection mergeAnnotations(final TargetAnnotationCollection original,
+                                                               final TargetAnnotationCollection other) {
         final TargetAnnotationCollection outputAnnotations = new TargetAnnotationCollection();
-        // Add the input annotations:
-        final TargetAnnotationCollection inputAnnotations = target.getAnnotations();
-        for (final TargetAnnotation annotation : inputAnnotations.annotationSet()) {
-            outputAnnotations.put(annotation, inputAnnotations.get(annotation));
+        for (final TargetAnnotation annotation : original.annotationSet()) {
+            outputAnnotations.put(annotation, original.get(annotation));
         }
-        // Calculate and add the requested annotations:
-        for (final Map.Entry<TargetAnnotation, TargetAnnotator> annotatorsEntry : annotators.entrySet()) {
-            outputAnnotations.put(annotatorsEntry.getKey(),
-                    String.valueOf(annotatorsEntry.getValue().apply(target, readsContext, referenceContext, featureContext)));
+        for (final TargetAnnotation annotation : other.annotationSet()) {
+            outputAnnotations.put(annotation, other.get(annotation));
         }
-        // Compose the new target annotations, the new target and write it to the output.
-        final Target newTarget = new Target(target.getName(), target.getInterval(), outputAnnotations);
-        try {
-            outputWriter.writeRecord(newTarget);
-        } catch (final IOException e) {
-            throw new UserException.CouldNotCreateOutputFile(outputFile, "problem writing a target in the output");
+        return outputAnnotations;
+    }
+
+    /**
+     * Performs lazy annotating operations and generates the fully annotated target list
+     *
+     * @return list of fully annotated targets ready to be saved
+     */
+    private List<Target> generateFullyAnnotatedTargets() {
+        if (!hasLazyAnnotators) {
+            return immediatelyAnnotatedTargetList;
         }
+        final EnumMap<TargetAnnotation, List<String>> lazyAnnotationsMap = new EnumMap<>(TargetAnnotation.class);
+        for (final TargetAnnotation targetAnnotation : annotators.keySet()) {
+            if (annotators.get(targetAnnotation).isLazy()) {
+                logger.info(String.format("Finalizing %s annotations...", targetAnnotation.name()));
+                final List<Object> rawData = lazyAnnotationsRawData.stream()
+                        .map(entry -> entry.get(targetAnnotation))
+                        .collect(Collectors.toList());
+                lazyAnnotationsMap.put(targetAnnotation, annotators.get(targetAnnotation).processAnnotations(
+                        immediatelyAnnotatedTargetList, rawData));
+            }
+        }
+        return IntStream.range(0, immediatelyAnnotatedTargetList.size())
+                .mapToObj(targetIndex -> {
+                    final Target target = immediatelyAnnotatedTargetList.get(targetIndex);
+                    final TargetAnnotationCollection immediateAnnotations = target.getAnnotations();
+                    final TargetAnnotationCollection lazyAnnotations = new TargetAnnotationCollection();
+                    lazyAnnotationsMap.entrySet().forEach(entry ->
+                            lazyAnnotations.put(entry.getKey(), entry.getValue().get(targetIndex)));
+                    return new Target(target.getName(), target.getInterval(), mergeAnnotations(immediateAnnotations, lazyAnnotations));
+                }).collect(Collectors.toList());
     }
 
     private interface TargetAnnotator {
         Object apply(final Target target, final ReadsContext readsContext, final ReferenceContext referenceContext,
                      final FeatureContext featureContext);
+
+        /**
+         * Indicates whether the annotator is lazy (requires post-processing) or can perform on-the-fly
+         */
+        boolean isLazy();
+
+        /**
+         * Lazy annotators must implement this function
+         *
+         * @param targets a list of traversed targets
+         * @param rawAnnotations a list of collected "raw" annotations
+         * @return processed annotations
+         */
+        default List<String> processAnnotations(final List<Target> targets, final List<Object> rawAnnotations) {
+            throw new UnsupportedOperationException("Either this annotator is not lazy, or the annotation post-processing" +
+                    " method is not implemented yet");
+        }
     }
 
     private class GCContentAnnotator implements TargetAnnotator {
@@ -174,21 +271,51 @@ public class AnnotateTargets extends TargetWalker {
             final long totalCount = gcCount + atCount;
             return totalCount == 0 ? Double.NaN : gcCount / (double) totalCount;
         }
+
+        @Override
+        public boolean isLazy() {
+            return false;
+        }
     }
 
     private class BaitCountAnnotator implements TargetAnnotator {
         @Override
-        public Double apply(final Target target, final ReadsContext readsContext, final ReferenceContext referenceContext,
-                            final FeatureContext featureContext) {
-            return featureContext.getValues(baits).stream()
-                    .mapToDouble(bait -> getOverlapFraction(target, bait))
-                    .sum();
+        public Set<SimpleInterval> apply(final Target target, final ReadsContext readsContext, final ReferenceContext referenceContext,
+                                         final FeatureContext featureContext) {
+            return featureContext.getValues(baits).stream().map(Target::getInterval).collect(Collectors.toSet());
         }
 
-        private double getOverlapFraction(final Target target, final Target bait) {
-            final int intersectionSize = target.getInterval().intersect(bait).size();
-            final int baitSize = bait.getInterval().size();
-            return (double)intersectionSize / baitSize;
+        @Override
+        public boolean isLazy() {
+            return true;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public List<String> processAnnotations(final List<Target> targets, final List<Object> rawAnnotations) {
+            if (targets.isEmpty()) {
+                return new ArrayList<>();
+            }
+            Utils.validateArg(targets.size() == rawAnnotations.size(), "The size of the list of raw BAIT_COUNT" +
+                    " annotations does not match the size of the list of targets");
+            final int numTargets = targets.size();
+            final Map<SimpleInterval, Set<Integer>> baitsToTargetIndexMap = new HashMap<>();
+            for (int targetIndex = 0; targetIndex < numTargets; targetIndex++) {
+                final Set<SimpleInterval> overlappingBaitsSet = (Set<SimpleInterval>) rawAnnotations.get(targetIndex);
+                for (final SimpleInterval bait : overlappingBaitsSet) {
+                    if (!baitsToTargetIndexMap.containsKey(bait)) {
+                        baitsToTargetIndexMap.put(bait, new HashSet<>());
+                    }
+                    baitsToTargetIndexMap.get(bait).add(targetIndex);
+                }
+            }
+            /* if a bait overlaps with n targets, each target gets a 1/n share of the bait */
+            final double[] baitCounts = new double[numTargets];
+            baitsToTargetIndexMap.values().forEach(overlappingTargetIndices -> {
+                final double sharePerTarget = 1.0 / overlappingTargetIndices.size();
+                overlappingTargetIndices.forEach(targetIndex -> baitCounts[targetIndex] += sharePerTarget);
+            });
+            return Arrays.stream(baitCounts).mapToObj(String::valueOf).collect(Collectors.toList());
         }
     }
 }
